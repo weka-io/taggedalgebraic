@@ -191,6 +191,9 @@ struct TaggedAlgebraic(U) if (is(U == union) || is(U == struct))
 	/// Enables call syntax operations on the stored value.
 	auto opCall(this TA, ARGS...)(auto ref ARGS args) if (hasOp!(TA, OpKind.call, null, ARGS)) { return implementOp!(OpKind.call, null)(this, args); }
 
+	/// Enables `foreach` iteration over container types.
+	mixin(generateOpApplyOverloads!U);
+
 	private @trusted @property ref inout(typeof(__traits(getMember, U, f))) trustedGet(string f)() inout { return trustedGet!(inout(typeof(__traits(getMember, U, f)))); }
 	private @trusted @property ref inout(T) trustedGet(T)() inout { return *cast(inout(T)*)m_data.ptr; }
 }
@@ -236,6 +239,23 @@ struct TaggedAlgebraic(U) if (is(U == union) || is(U == struct))
 
 	ta = S(8);
 	assert(ta.test() == 4);
+}
+
+/// Iteration over container types works as well.
+unittest {
+	static struct S {
+		int[] array;
+		int[string] dict;
+	}
+	alias TA = TaggedAlgebraic!S;
+
+	auto ta = TA([3, 4, 5]);
+	foreach (size_t i, v; ta) assert(v - i == 3);
+	foreach (v; ta) assert(v >= 3 && v <= 5);
+
+	ta = TA(["a": 1, "b": 2, "c": 3]);
+	foreach (string key, v; ta) assert(key == "a" || key == "b" || key == "c");
+	foreach (v; ta) assert(v >= 1 && v <= 3);
 }
 
 unittest { // std.conv integration
@@ -488,6 +508,16 @@ unittest {
 	assert(b["foo"] == "hello");
 	assert(c[0] == a);
 	assert(c[0] == "hello");
+}
+
+unittest { // default construction
+	struct S1 { typeof(null) none; int some; }
+	struct S2 { int some; }
+
+	TaggedAlgebraic!S1 ta1; // works, defaults to "none"
+
+	// doesn't work, needs explicit initialization
+	static assert(!__traits(compiles, { TaggedAlgebraic!S2 ta2; }));
 }
 
 
@@ -889,6 +919,32 @@ private string generateConstructors(U)()
 		}.format(tname, [SameTypeFields!(U, tname)].map!(f => "Kind."~f).join(", "), tname);
 
 	return ret;
+}
+
+private string generateOpApplyOverloads(U)()
+{
+	string ret;
+	foreach (T; OpApplyTypes!U)
+		ret ~= mixin OpApply!(U, T.expand);
+	return ret;
+}
+
+private mixin template OpApply(U, T...)
+{
+	int opApply(scope int delegate(T) del)
+	{
+		switch (m_kind) {
+			default: assert(false, "Only the following kinds can be iterated: "~fieldNames.join(", "));
+			foreach (i, tname; fieldNames) {
+				alias T = typeof(__traits(getMember, U, tname));
+				case __traits(getMember, Kind, tname):
+					foreach (T t; trustedGet!tname)
+						if (auto ret = del(t))
+							return ret;
+					return 0;
+			}
+		}
+	}
 }
 
 private template UniqueTypeFields(U) {
