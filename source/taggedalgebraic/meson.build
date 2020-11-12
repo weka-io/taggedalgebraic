@@ -1,4 +1,5 @@
 taggedalgebraic_src = [
+	'package.d',
 	'taggedalgebraic.d',
 	'taggedunion.d',
 	'visit.d',
@@ -9,15 +10,17 @@ if build_machine.system() == 'darwin'
 	taggedalgebraic_lib = library(
 		'taggedalgebraic',
 		taggedalgebraic_src,
-		install: true,
 		include_directories: include_directories('../'),
+		install: true,
+		pic: true,
 	)
 else
 	taggedalgebraic_lib = library(
 		'taggedalgebraic',
 		taggedalgebraic_src,
-		install: true,
 		include_directories: include_directories('../'),
+		install: true,
+		pic: true,
 		version: project_version,
 	)
 endif
@@ -39,7 +42,7 @@ test_exe = executable(
 	taggedalgebraic_src,
 	include_directories: include_directories('../'),
 	d_unittest: true,
-	link_args: '-main',
+	link_args: '--main',
 )
 
 test('test_taggedalgebraic', test_exe)
